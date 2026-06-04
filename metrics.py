@@ -3,6 +3,7 @@ import scipy.linalg
 import tensorflow as tf
 
 def calculate_fid(f1, f2):
+    # FID：比较两组特征分布的均值和协方差差异，数值越低表示分布越接近。
     mean1, sigma1 = f1.mean(axis=0), np.cov(f1, rowvar=False)
     mean2, sigma2 = f2.mean(axis=0), np.cov(f2, rowvar=False)
     sum_sq_diff = np.sum((mean1 - mean2)**2)
@@ -14,6 +15,7 @@ def calculate_fid(f1, f2):
 
 def batch_pairwise_distances(U, V):
     """Compute pairwise distances between two batches of feature vectors."""
+    # 计算 U 和 V 中所有样本两两之间的平方欧氏距离。
     # Squared norms of each row in U and V.
     norm_u = tf.reduce_sum(tf.square(U), 1)
     norm_v = tf.reduce_sum(tf.square(V), 1)
@@ -66,7 +68,7 @@ class ManifoldEstimator():
         self._ref_features = features
         self._distance_block = distance_block
 
-        # Estimate manifold of features by calculating distances to k-NN of each sample.
+        # 通过每个样本到第 k 个近邻的距离估计真实/生成样本所在的流形半径。
         self.D = np.zeros([num_images, self.num_nhoods], dtype=np.float32)
         distance_batch = np.zeros([row_batch_size, num_images], dtype=np.float32)
         seq = np.arange(max(self.nhood_sizes) + 1, dtype=np.int32)
@@ -81,8 +83,8 @@ class ManifoldEstimator():
 
                 # Compute distances between batches.
                 distance_batch[0:end1-begin1, begin2:end2] = self._distance_block.pairwise_distances(row_batch, col_batch)
-    
-            # Find the k-nearest neighbor from the current batch.
+
+            # 找到当前 batch 中每个样本的第 k 近邻距离。
             self.D[begin1:end1, :] = np.partition(distance_batch[0:end1-begin1, :], seq, axis=1)[:, self.nhood_sizes]
 
         if clamp_to_percentile is not None:
@@ -108,6 +110,7 @@ class ManifoldEstimator():
 
                 distance_batch[0:end1-begin1, begin2:end2] = self._distance_block.pairwise_distances(feature_batch, ref_batch)
 
+            # 判断评估样本是否落在参考样本估计出的流形邻域内。
             # From the minibatch of new feature vectors, determine if they are in the estimated manifold.
             # If a feature vector is inside a hypersphere of some reference sample, then
             # the new sample lies at the estimated manifold.
@@ -146,16 +149,16 @@ def knn_precision_recall_features(ref_features, eval_features, nhood_sizes=[3],
     """
     num_features = ref_features.shape[1]
 
-    # Initialize DistanceBlock and ManifoldEstimators.
+    # 初始化参考分布和生成分布的流形估计器。
     distance_block = DistanceBlock(num_features, num_gpus)
     ref_manifold = ManifoldEstimator(distance_block, ref_features, row_batch_size, col_batch_size, nhood_sizes) 
     eval_manifold = ManifoldEstimator(distance_block, eval_features, row_batch_size, col_batch_size, nhood_sizes)
 
-    # Precision: How many points from eval_features are in ref_features manifold.
+    # Precision：生成样本中有多少落在真实样本流形内。
     precision = ref_manifold.evaluate(eval_features)
     precision = precision.mean(axis=0)
 
-    # Recall: How many points from ref_features are in eval_features manifold.
+    # Recall：真实样本中有多少被生成样本流形覆盖。
     recall = eval_manifold.evaluate(ref_features)
     recall = recall.mean(axis=0)
 
