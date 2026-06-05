@@ -1,0 +1,4 @@
+matplotlib
+mindspore
+numpy~=1.26
+tensorflow==2.14.0
