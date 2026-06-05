@@ -14,10 +14,13 @@ class PostProcess:
         self.n = len(self.reference_soh)
         self.model = diffusion_sampler
 
-    def gen(self, guide_w=0.0, reps=1, progress_every=50):
+    def gen(self, guide_w=0.0, reps=1, progress_every=50, progress_log=None):
         protos = np.repeat(self.capacity_matrix, reps, axis=0)
         return self.model.generate_samples(
-            protos, guide_w=guide_w, progress_every=progress_every
+            protos,
+            guide_w=guide_w,
+            progress_every=progress_every,
+            progress_log=progress_log,
         ).asnumpy()
 
     @staticmethod
@@ -28,11 +31,13 @@ class PostProcess:
         resized = np.stack([np.interp(dst_x, src_x, row) for row in flat], axis=0)
         return resized.reshape((*curves.shape[:-2], target_length, curves.shape[-1]))
 
-    def pred(self, guide_w=0.0, reps=1, progress_every=50):
+    def pred(self, guide_w=0.0, reps=1, progress_every=50, progress_log=None):
         refs = self._resize_curves(self.reference_soh, 2560).reshape((self.n, -1))
         refs = (refs + 1.0) / 2.0 * 100.0
 
-        samples = self.gen(guide_w, reps=reps, progress_every=progress_every)
+        samples = self.gen(
+            guide_w, reps=reps, progress_every=progress_every, progress_log=progress_log
+        )
         samples = self._resize_curves(samples, 2560)
         samples = (samples.reshape((self.n, reps, -1)) + 1.0) / 2.0 * 100.0
 

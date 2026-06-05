@@ -16,14 +16,19 @@ def _make_group_count(channels, requested_groups):
 class Conv1dLast(nn.Cell):
     """Conv1d wrapper for tensors in [batch, length, channels] layout."""
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1):
+    def __init__(
+        self, in_channels, out_channels, kernel_size, stride=1, weight_init=None
+    ):
         super().__init__()
+        if weight_init is None:
+            weight_init = "normal"
         self.conv = nn.Conv1d(
             in_channels,
             out_channels,
             kernel_size=kernel_size,
             stride=stride,
             pad_mode="same",
+            weight_init=weight_init,
         )
 
     def construct(self, x):
@@ -53,11 +58,10 @@ class AttentionBlock(nn.Cell):
         self.query = nn.Dense(units, units)
         self.key = nn.Dense(units, units)
         self.value = nn.Dense(units, units)
-        self.proj = nn.Dense(units, units)
+        self.proj = nn.Dense(units, units, weight_init="zeros")
         self.softmax = nn.Softmax(axis=-1)
 
     def construct(self, x):
-        residual = x
         x = self.norm(x)
         q = self.query(x)
         k = self.key(x)
@@ -65,9 +69,9 @@ class AttentionBlock(nn.Cell):
         scale = Tensor(self.units ** -0.5, ms.float32)
         attn = ops.matmul(q, ops.transpose(k, (0, 2, 1))) * scale
         attn = self.softmax(attn)
-        x = ops.matmul(attn, v)
-        x = self.proj(x)
-        return residual + x
+        proj = ops.matmul(attn, v)
+        proj = self.proj(proj)
+        return x + proj
 
 
 class TimeEmbedding(nn.Cell):
@@ -145,7 +149,9 @@ class ResidualBlockDown(nn.Cell):
         self.norm1 = GroupNormLast(in_channels, groups)
         self.conv1 = Conv1dLast(in_channels, out_channels, kernel_size=3)
         self.norm2 = GroupNormLast(out_channels, groups)
-        self.conv2 = Conv1dLast(out_channels, out_channels, kernel_size=3)
+        self.conv2 = Conv1dLast(
+            out_channels, out_channels, kernel_size=3, weight_init="zeros"
+        )
 
     def construct(self, x, temb):
         residual = x if self.shortcut is None else self.shortcut(x)
@@ -170,7 +176,9 @@ class ResidualBlockUp(nn.Cell):
         self.norm1 = GroupNormLast(in_channels, groups)
         self.conv1 = Conv1dLast(in_channels, out_channels, kernel_size=3)
         self.norm2 = GroupNormLast(out_channels, groups)
-        self.conv2 = Conv1dLast(out_channels, out_channels, kernel_size=3)
+        self.conv2 = Conv1dLast(
+            out_channels, out_channels, kernel_size=3, weight_init="zeros"
+        )
 
     def construct(self, x, temb, cemb):
         residual = x if self.shortcut is None else self.shortcut(x)
@@ -312,7 +320,7 @@ class DiffBattUNet(nn.Cell):
         self.up_attn = nn.CellList(up_attn)
         self.up_samples = nn.CellList(up_samples)
         self.out_norm = GroupNormLast(in_channels, norm_groups)
-        self.out_conv = Conv1dLast(in_channels, 1, kernel_size=7)
+        self.out_conv = Conv1dLast(in_channels, 1, kernel_size=7, weight_init="zeros")
         self.out_activation = activation
 
     def construct(self, x, timesteps, capacity_matrix, condition_mask):

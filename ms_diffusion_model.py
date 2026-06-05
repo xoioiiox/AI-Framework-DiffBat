@@ -15,6 +15,7 @@ class DiffusionWithLoss(nn.Cell):
         timesteps,
         p_uncond=0.2,
         first_channels=8,
+        drop_condition=True,
     ):
         super().__init__()
         self.network = network
@@ -22,12 +23,22 @@ class DiffusionWithLoss(nn.Cell):
         self.timesteps = timesteps
         self.p_uncond = p_uncond
         self.first_channels = first_channels
+        self.drop_condition = drop_condition
         self.loss_fn = nn.MSELoss()
 
     def construct(self, images, protocol):
         batch_size = images.shape[0]
         t = ops.randint(0, self.timesteps, (batch_size,), dtype=ms.int32)
-        c_mask = ops.cast(ops.uniform((batch_size,), Tensor(0.0, ms.float32), Tensor(1.0, ms.float32)) >= self.p_uncond, ms.float32)
+        if self.drop_condition:
+            c_mask = ops.cast(
+                ops.uniform(
+                    (batch_size,), Tensor(0.0, ms.float32), Tensor(1.0, ms.float32)
+                )
+                >= self.p_uncond,
+                ms.float32,
+            )
+        else:
+            c_mask = ops.ones((batch_size,), ms.float32)
         c_mask = ops.tile(c_mask[:, None], (1, self.first_channels * 4))
         noise = ops.StandardNormal()(images.shape)
         images_t = self.gdf_util.q_sample(images, t, noise)
@@ -45,12 +56,14 @@ class DiffusionSampler:
         timesteps,
         first_channels=8,
         sample_length=256,
+        clip_denoised=False,
     ):
         self.ema_network = ema_network
         self.gdf_util = gdf_util
         self.timesteps = timesteps
         self.first_channels = first_channels
         self.sample_length = sample_length
+        self.clip_denoised = clip_denoised
 
     def generate(self, samples, timesteps, capacity_matrices, guide_w):
         batch_size = samples.shape[0]
@@ -60,11 +73,16 @@ class DiffusionSampler:
         pred_uncond = self.ema_network(samples, timesteps, capacity_matrices, zeros)
         pred_noise = (1.0 + guide_w) * pred_cond - guide_w * pred_uncond
         return self.gdf_util.p_sample(
-            pred_noise, samples, timesteps, clip_denoised=False
+            pred_noise, samples, timesteps, clip_denoised=self.clip_denoised
         )
 
     def generate_samples(
-        self, capacity_matrices, guide_w=0.0, record_samples=False, progress_every=50
+        self,
+        capacity_matrices,
+        guide_w=0.0,
+        record_samples=False,
+        progress_every=50,
+        progress_log=None,
     ):
         if not isinstance(capacity_matrices, Tensor):
             capacity_matrices = Tensor(capacity_matrices, ms.float32)
@@ -80,7 +98,11 @@ class DiffusionSampler:
             if record_samples:
                 record.append(samples)
             if progress_every and (step == 1 or step % progress_every == 0 or step == self.timesteps):
-                print(f"sampling step {step}/{self.timesteps} (t={t})", flush=True)
+                message = f"sampling step {step}/{self.timesteps} (t={t})"
+                if progress_log is not None:
+                    progress_log(message)
+                else:
+                    print(message, flush=True)
         if record_samples:
             return samples, record
         return samples
