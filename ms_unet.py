@@ -46,7 +46,9 @@ class GroupNormLast(nn.Cell):
 
     def construct(self, x):
         x = ops.transpose(x, (0, 2, 1))
+        x = ops.expand_dims(x, -1)
         x = self.norm(x)
+        x = ops.squeeze(x, -1)
         return ops.transpose(x, (0, 2, 1))
 
 

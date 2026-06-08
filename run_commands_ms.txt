@@ -1,0 +1,54 @@
+DiffBatt MindSpore commands
+===========================
+
+1. Export TensorFlow snapshot data to NPZ
+-----------------------------------------
+venv\Scripts\python.exe ms_data.py --snapshot data/matr_1_train_ds --output data_npz/matr_1_train.npz
+venv\Scripts\python.exe ms_data.py --snapshot data/matr_1_test_ds --output data_npz/matr_1_test.npz
+
+
+2. Inspect dataset contents
+---------------------------
+venv\Scripts\python.exe inspect_data.py --all
+venv\Scripts\python.exe inspect_data.py --dataset data/matr_1_train_ds --index 0 --plot --export --output-dir data_inspection\matr_1_train_sample0
+
+
+3. Train MindSpore model
+------------------------
+Recommended stable setting:
+
+venv\Scripts\python.exe ms_training.py --train-npz data_npz/matr_1_train.npz --val-npz data_npz/matr_1_test.npz --epochs 500 --batch-size 41 --learning-rate 5e-4 --clip-norm 1.0 --timesteps 1000 --p-uncond 0.2 --ema 0.999 --device CPU --ckpt-dir checkpoints_ms/matr_1_v2 --log-file logs_ms/train_matr1_v2.txt
+
+More conservative setting if NaN appears:
+
+venv\Scripts\python.exe ms_training.py --train-npz data_npz/matr_1_train.npz --val-npz data_npz/matr_1_test.npz --epochs 500 --batch-size 41 --learning-rate 1e-4 --clip-norm 1.0 --timesteps 1000 --p-uncond 0.2 --ema 0.999 --device CPU --ckpt-dir checkpoints_ms/matr_1_v2 --log-file logs_ms/train_matr1_v2_lr1e4.txt
+
+
+4. Evaluate metrics
+-------------------
+Quick check with fewer samples:
+
+venv\Scripts\python.exe ms_eval_metrics.py --test-npz data_npz/matr_1_test.npz --ema-ckpt checkpoints_ms/matr_1_v2 --device CPU --timesteps 1000 --reps 1 --max-samples 4 --progress-every 100 --all-eol --debug --log-file logs_ms/eval_matr1_quick.txt
+
+Report setting:
+
+venv\Scripts\python.exe ms_eval_metrics.py --test-npz data_npz/matr_1_test.npz --ema-ckpt checkpoints_ms/matr_1_v2 --device CPU --timesteps 1000 --reps 3 --progress-every 100 --all-eol --debug --log-file logs_ms/eval_matr1_report.txt
+
+Paper-like setting, slower on CPU:
+
+venv\Scripts\python.exe ms_eval_metrics.py --test-npz data_npz/matr_1_test.npz --ema-ckpt checkpoints_ms/matr_1_v2 --device CPU --timesteps 1000 --reps 10 --progress-every 100 --all-eol --debug --log-file logs_ms/eval_matr1_reps10.txt
+
+
+5. Generate report figures
+--------------------------
+SOH prediction figure and denoising process figure:
+
+venv\Scripts\python.exe ms_generate_figures.py --test-npz data_npz/matr_1_test.npz --ema-ckpt checkpoints_ms/matr_1_v2 --device CPU --timesteps 1000 --reps 3 --max-samples 8 --max-panels 8 --progress-every 100 --denoise-checkpoints 100,200,300,400,500,600,700,800,900,1000 --denoise-mode x0 --output-dir figures_ms
+
+
+6. Notes
+--------
+- Use checkpoints_ms/matr_1_v2 for the fixed MindSpore model.
+- Do not use deleted/old checkpoint directories from the earlier migration attempts.
+- Training and evaluation logs are saved under logs_ms/*.txt.
+- If loss becomes NaN, stop the run and use learning-rate 1e-4.
